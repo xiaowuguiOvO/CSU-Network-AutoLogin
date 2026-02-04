@@ -1,6 +1,6 @@
 # CSU Auto Connect
 
-Windows 校园网自动登录工具（UI + 托盘 + 开机自启）。
+Windows 实验室校园网自动登录工具，防止回家以后实验室断网后需要手动登录。
 
 ## 下载与安装（普通用户）
 1. 从 Release 下载 `csu_auto_connect-vX.Y.Z-windows-x64.zip`
