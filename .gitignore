@@ -1,0 +1,15 @@
+*.log
+dist/
+build/
+release/
+*.spec
+__pycache__/
+*.pyc
+.venv/
+config.ini
+.pyinstaller/
+.mypy_cache/
+.pytest_cache/
+.python-version
+.idea/
+.vscode/
