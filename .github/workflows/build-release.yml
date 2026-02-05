@@ -1,0 +1,72 @@
+name: build-release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build (PyInstaller)
+        run: |
+          pyinstaller `
+            --noconsole `
+            --name csu_auto_connect `
+            --clean `
+            --noconfirm `
+            --distpath dist `
+            --workpath build `
+            --specpath .pyinstaller `
+            csu_auto_connect\main.py
+
+      - name: Package Zip
+        id: pkg
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          if (-not $version) { $version = "dev" }
+
+          Copy-Item -Force .\config.example.ini .\dist\csu_auto_connect\config.example.ini
+          Copy-Item -Force .\README.md .\dist\csu_auto_connect\README.md
+
+          $zip = "csu_auto_connect-v$version-windows-x64.zip"
+          if (Test-Path $zip) { Remove-Item -Force $zip }
+          Compress-Archive -Path .\dist\csu_auto_connect -DestinationPath $zip
+
+          Remove-Item -Force .\dist\csu_auto_connect\config.example.ini
+          Remove-Item -Force .\dist\csu_auto_connect\README.md
+
+          "zip=$zip" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: csu_auto_connect-windows
+          path: ${{ steps.pkg.outputs.zip }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.pkg.outputs.zip }}
+

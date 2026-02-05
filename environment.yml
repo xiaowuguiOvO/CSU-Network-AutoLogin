@@ -1,0 +1,9 @@
+name: csu_auto_connect
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.12
+  - pyside6
+  - pyinstaller
+  - requests
