@@ -1,6 +1,7 @@
 # CSU Auto Connect
 
 针对中南大学的 Windows 实验室校园网自动登录工具，防止回家以后实验室断网后需要手动登录。
+<img width="332" height="564" alt="image" src="https://github.com/user-attachments/assets/5155dc18-67d1-4d12-a6d2-bb1f5e04e585" />
 
 ## 下载与安装
 1. 从 Release 下载 `csu_auto_connect-vX.Y.Z-windows-x64.zip`
