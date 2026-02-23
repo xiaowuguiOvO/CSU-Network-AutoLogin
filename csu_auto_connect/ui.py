@@ -59,6 +59,10 @@ QWidget#Card {
   border-radius: 14px;
 }
 
+QWidget#Card QLabel {
+  color: #0f172a;
+}
+
 QLabel#Title {
   font-size: 18px;
   font-weight: 650;
@@ -83,6 +87,7 @@ QLineEdit, QComboBox, QSpinBox {
   border: 1px solid #d1d5db;
   border-radius: 10px;
   background: #ffffff;
+  color: #0f172a;
   selection-background-color: #2563eb;
 }
 
@@ -110,6 +115,7 @@ QPushButton {
   border-radius: 12px;
   border: 1px solid #d1d5db;
   background: #ffffff;
+  color: #0f172a;
 }
 
 QPushButton:hover {
@@ -169,6 +175,25 @@ QLabel#StatusPill[status="error"] {
 
 QCheckBox {
   spacing: 10px;
+  color: #0f172a;
+}
+
+QCheckBox::indicator {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid #94a3b8;
+  background: #ffffff;
+}
+
+QCheckBox::indicator:checked {
+  border: 1px solid #1d4ed8;
+  background: #2563eb;
+}
+
+QCheckBox::indicator:unchecked:hover {
+  border: 1px solid #64748b;
+  background: #f8fafc;
 }
 """
 
