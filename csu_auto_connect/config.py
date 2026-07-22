@@ -17,6 +17,8 @@ class Config:
     portal_extra_params: str = ""
     portal_referer: str = ""
     autostart: bool = True
+    connect_on_launch: bool = True
+    theme: str = "system"  # system | light | dark
     # Show the window on first run; user can enable "start minimized" later.
     start_minimized: bool = False
 
@@ -70,6 +72,11 @@ def load_ini(path: Path) -> Config:
                     cfg.portal_referer = val
             elif key == "AutoStart":
                 cfg.autostart = val.lower() in ("1", "true", "yes", "on")
+            elif key == "ConnectOnLaunch":
+                cfg.connect_on_launch = val.lower() in ("1", "true", "yes", "on")
+            elif key == "Theme":
+                if val in ("system", "light", "dark"):
+                    cfg.theme = val
             elif key == "StartMinimized":
                 cfg.start_minimized = val.lower() in ("1", "true", "yes", "on")
     except OSError:
@@ -92,6 +99,8 @@ def save_ini(path: Path, cfg: Config) -> None:
         f"PortalExtraParams={cfg.portal_extra_params}",
         f"PortalReferer={cfg.portal_referer}",
         f"AutoStart={'true' if cfg.autostart else 'false'}",
+        f"ConnectOnLaunch={'true' if cfg.connect_on_launch else 'false'}",
+        f"Theme={cfg.theme}",
         f"StartMinimized={'true' if cfg.start_minimized else 'false'}",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

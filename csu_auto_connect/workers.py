@@ -34,6 +34,7 @@ def _resolve_portal_settings(cfg: Config):
 class AutoConnectWorker(QObject):
     log = Signal(str)
     status = Signal(str)
+    ip_resolved = Signal(str)
     running = Signal(bool)
     finished = Signal()
 
@@ -99,6 +100,7 @@ class AutoConnectWorker(QObject):
                         self._stop.wait(interval)
                         continue
 
+                    self.ip_resolved.emit(ip)
                     _log(f"wlan_user_ip={ip}")
                     self.status.emit("登录中...")
                     if defaults.login_style == "lab":

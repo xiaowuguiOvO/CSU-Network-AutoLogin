@@ -2,18 +2,19 @@
 
 import argparse
 import sys
+from datetime import datetime
 
 import faulthandler
 import tempfile
 from urllib.parse import urlparse
-from PySide6.QtCore import Qt, QThread, Slot, QRegularExpression
-from PySide6.QtGui import QAction, QFont, QRegularExpressionValidator
+from PySide6.QtCore import Qt, QThread, QTimer, Slot, QRegularExpression
+from PySide6.QtGui import QAction, QRegularExpressionValidator
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QDialog,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -21,6 +22,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPushButton,
     QPlainTextEdit,
+    QScrollArea,
     QSpinBox,
     QStyle,
     QSystemTrayIcon,
@@ -46,164 +48,12 @@ from .portal import (
     test_internet,
 )
 from .workers import AutoConnectWorker, OneShotWorker
+from .theme import apply_theme
+from .widgets import ToggleSwitch
 
 
-_APP_QSS = """
-QMainWindow {
-  background: #f5f7fb;
-}
-
-QWidget#Card {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 14px;
-}
-
-QWidget#Card QLabel {
-  color: #0f172a;
-}
-
-QLabel#Title {
-  font-size: 18px;
-  font-weight: 650;
-  color: #0f172a;
-}
-
-QLabel#Subtitle {
-  color: #64748b;
-}
-
-QLabel#SectionTitle {
-  color: #0f172a;
-  font-weight: 600;
-}
-
-QLabel#Hint {
-  color: #64748b;
-}
-
-QLineEdit, QComboBox, QSpinBox {
-  padding: 7px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #0f172a;
-  selection-background-color: #2563eb;
-}
-
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
-  border: 1px solid #2563eb;
-}
-
-QComboBox::drop-down {
-  border: 0px;
-  width: 26px;
-}
-
-QPlainTextEdit {
-  padding: 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 12px;
-  background: #0b1220;
-  color: #e5e7eb;
-  font-family: Consolas, "Cascadia Mono", monospace;
-  font-size: 11px;
-}
-
-QPushButton {
-  padding: 8px 12px;
-  border-radius: 12px;
-  border: 1px solid #d1d5db;
-  background: #ffffff;
-  color: #0f172a;
-}
-
-QPushButton:hover {
-  background: #f3f4f6;
-}
-
-QPushButton#Primary {
-  background: #2563eb;
-  border: 1px solid #1d4ed8;
-  color: #ffffff;
-  font-weight: 600;
-}
-
-QPushButton#Primary:hover {
-  background: #1d4ed8;
-}
-
-QPushButton#Danger {
-  background: #ef4444;
-  border: 1px solid #dc2626;
-  color: #ffffff;
-  font-weight: 600;
-}
-
-QPushButton#Danger:hover {
-  background: #dc2626;
-}
-
-QPushButton:disabled {
-  color: #9ca3af;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-}
-
-QLabel#StatusPill {
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: #e5e7eb;
-  color: #111827;
-  font-weight: 600;
-}
-
-QLabel#StatusPill[status="online"] {
-  background: #dcfce7;
-  color: #166534;
-}
-
-QLabel#StatusPill[status="busy"] {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-QLabel#StatusPill[status="error"] {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-QCheckBox {
-  spacing: 10px;
-  color: #0f172a;
-}
-
-QCheckBox::indicator {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 1px solid #94a3b8;
-  background: #ffffff;
-}
-
-QCheckBox::indicator:checked {
-  border: 1px solid #1d4ed8;
-  background: #2563eb;
-}
-
-QCheckBox::indicator:unchecked:hover {
-  border: 1px solid #64748b;
-  background: #f8fafc;
-}
-"""
-
-
-def apply_app_style(app: QApplication) -> None:
-    # Fusion + QSS gives a consistent, modern look on Windows.
-    app.setStyle("Fusion")
-    # Qt will fall back automatically if the font is not available.
-    app.setFont(QFont("Segoe UI Variable", 10))
-    app.setStyleSheet(_APP_QSS)
+def apply_app_style(app: QApplication, theme: str = "system") -> str:
+    return apply_theme(app, theme)
 
 
 class MainWindow(QMainWindow):
@@ -215,10 +65,11 @@ class MainWindow(QMainWindow):
 
         self._cfg = cfg
         self._running = False
+        self._theme_mode = cfg.theme
 
         self.setWindowTitle("CSU Auto Connect")
-        self.setMinimumSize(440, 640)
-        self.resize(440, 720)
+        self.setMinimumSize(420, 680)
+        self.resize(460, 820)
         # Controls
         self.ed_user = QLineEdit(cfg.user_account)
         self.ed_user.setPlaceholderText("账号")
@@ -265,35 +116,71 @@ class MainWindow(QMainWindow):
         self.ed_referer = QLineEdit(cfg.portal_referer)
         self.ed_referer.setPlaceholderText("https://portal.csu.edu.cn/")
 
-        self.chk_autostart = QCheckBox("开机自启（当前用户）")
+        self.chk_autostart = ToggleSwitch()
         self.chk_autostart.setChecked(is_autostart_enabled())
 
-        self.chk_start_min = QCheckBox("自启时最小化到托盘")
+        self.chk_connect_on_launch = ToggleSwitch()
+        self.chk_connect_on_launch.setChecked(cfg.connect_on_launch)
+
+        self.chk_start_min = ToggleSwitch()
         self.chk_start_min.setChecked(cfg.start_minimized)
 
 
-        self.lbl_status = QLabel("就绪")
+        self.lbl_status = QLabel("待机")
         self.lbl_status.setObjectName("StatusPill")
-        self._set_status_kind("stopped")
+
+        self.lbl_status_dot = QLabel()
+        self.lbl_status_dot.setObjectName("StatusDot")
+        self.lbl_connection_title = QLabel("等待启动")
+        self.lbl_connection_title.setObjectName("ConnectionTitle")
+        self.lbl_ip_value = QLabel("尚未探测 IP")
+        self.lbl_ip_value.setObjectName("IpValue")
+        self.lbl_network_value = QLabel()
+        self.lbl_network_value.setObjectName("MetricValue")
+        self.lbl_mode_value = QLabel()
+        self.lbl_mode_value.setObjectName("MetricValue")
+        self.lbl_interval_value = QLabel()
+        self.lbl_interval_value.setObjectName("MetricValue")
+        self.lbl_latest_event = QLabel("应用已准备就绪")
+        self.lbl_latest_event.setObjectName("MetricValue")
+        self.lbl_latest_event.setWordWrap(True)
+        self.lbl_latest_time = QLabel("--:--:--")
+        self.lbl_latest_time.setObjectName("LatestTime")
 
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
 
-        self.btn_toggle = QPushButton("开始")
-        self.btn_toggle.setObjectName("Primary")
+        self.btn_toggle = QPushButton("启动服务")
+        self.btn_toggle.setObjectName("PrimaryButton")
         self.btn_toggle.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
 
-        self.btn_probe = QPushButton("探测IP")
+        self.btn_probe = QPushButton("探测 IP")
         self.btn_probe.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+        self.btn_probe.setObjectName("ActionCard")
 
         self.btn_test = QPushButton("连接测试")
         self.btn_test.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
+        self.btn_test.setObjectName("ActionCard")
 
         self.btn_save = QPushButton("保存配置")
         self.btn_save.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+        self.btn_save.setObjectName("TextButton")
 
-        self.btn_open_log = QPushButton("打开日志")
-        self.btn_open_log.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
+        self.btn_open_log = QPushButton("☷")
+        self.btn_open_log.setObjectName("CircleButton")
+        self.btn_open_log.setToolTip("打开日志")
+
+        self.btn_theme = QPushButton("◐")
+        self.btn_theme.setObjectName("CircleButton")
+        self.btn_theme.setToolTip("切换主题")
+        self.theme_menu = QMenu(self)
+        for text, mode in (("跟随系统", "system"), ("浅色", "light"), ("深色", "dark")):
+            action = self.theme_menu.addAction(text)
+            action.triggered.connect(lambda checked=False, value=mode: self.set_theme(value))
+        self.btn_theme.setMenu(self.theme_menu)
+
+        self.btn_login_toggle = QPushButton()
+        self.btn_login_toggle.setObjectName("SectionToggle")
 
         self.btn_copy_log = QPushButton("复制日志")
         self.btn_copy_log.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
@@ -301,6 +188,7 @@ class MainWindow(QMainWindow):
         self.btn_clear_log = QPushButton("清空")
         self.btn_clear_log.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
 
+        self._set_status_kind("stopped")
         self._update_toggle_button()
 
         defaults = get_all_portal_defaults()
@@ -312,123 +200,159 @@ class MainWindow(QMainWindow):
 
         self._apply_portal_defaults()
 
-        # Header
-        title = QLabel("CSU Auto Connect")
-        title.setObjectName("Title")
-        subtitle = QLabel("校园网自动登录")
-        subtitle.setObjectName("Subtitle")
+        # Portrait dashboard header
+        title = QLabel("校园网自动连接")
+        title.setObjectName("AppTitle")
+        subtitle = QLabel("CSU Auto Connect")
+        subtitle.setObjectName("Eyebrow")
 
-        header_left = QVBoxLayout()
-        header_left.setSpacing(2)
-        header_left.addWidget(title)
-        header_left.addWidget(subtitle)
+        header_text = QVBoxLayout()
+        header_text.setSpacing(1)
+        header_text.addWidget(subtitle)
+        header_text.addWidget(title)
 
         header = QHBoxLayout()
-        header.addLayout(header_left)
-        header.addStretch(1)
-        header.addWidget(self.lbl_status, 0, Qt.AlignmentFlag.AlignVCenter)
+        header.setSpacing(10)
+        header.addWidget(self.btn_open_log)
+        header.addLayout(header_text, 1)
+        header.addWidget(self.btn_theme)
 
-        # Settings card
-        settings_card = QWidget()
-        settings_card.setObjectName("Card")
-        settings_card.setMinimumWidth(360)
-        settings_card.setMaximumWidth(480)
+        # Main connection status card
+        hero_card = QWidget()
+        hero_card.setObjectName("HeroCard")
+        hero = QVBoxLayout(hero_card)
+        hero.setContentsMargins(20, 18, 20, 18)
+        hero.setSpacing(10)
 
-        settings = QVBoxLayout(settings_card)
-        settings.setContentsMargins(16, 16, 16, 16)
-        settings.setSpacing(14)
+        hero_top = QHBoxLayout()
+        hero_top.setSpacing(8)
+        hero_top.addWidget(self.lbl_status_dot)
+        hero_label = QLabel("当前连接状态")
+        hero_label.setObjectName("Muted")
+        hero_top.addWidget(hero_label)
+        hero_top.addStretch(1)
+        hero_top.addWidget(self.lbl_status)
+        hero.addLayout(hero_top)
+        hero.addWidget(self.lbl_connection_title)
+        hero.addWidget(self.lbl_ip_value)
 
-        sec1 = QLabel("账号")
-        sec1.setObjectName("SectionTitle")
-        settings.addWidget(sec1)
+        metrics = QGridLayout()
+        metrics.setHorizontalSpacing(16)
+        metrics.setVerticalSpacing(4)
+        metric_specs = (
+            ("网络", self.lbl_network_value),
+            ("模式", self.lbl_mode_value),
+            ("下次检查", self.lbl_interval_value),
+        )
+        for column, (label_text, value_label) in enumerate(metric_specs):
+            metric_label = QLabel(label_text)
+            metric_label.setObjectName("MetricLabel")
+            metrics.addWidget(metric_label, 0, column)
+            metrics.addWidget(value_label, 1, column)
+        metrics.setColumnStretch(0, 1)
+        metrics.setColumnStretch(1, 1)
+        metrics.setColumnStretch(2, 1)
+        hero.addLayout(metrics)
 
-        form1 = QFormLayout()
-        form1.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
-        form1.setFormAlignment(Qt.AlignmentFlag.AlignTop)
-        form1.setVerticalSpacing(10)
-        form1.addRow("账号", self.ed_user)
-        form1.addRow("密码", self.ed_pass)
-        settings.addLayout(form1)
+        action_row = QHBoxLayout()
+        action_row.setSpacing(12)
+        action_row.addWidget(self.btn_test, 1)
+        action_row.addWidget(self.btn_probe, 1)
 
-        sec2 = QLabel("运行")
-        sec2.setObjectName("SectionTitle")
-        settings.addWidget(sec2)
+        auto_title = QLabel("自动运行")
+        auto_title.setObjectName("SectionTitle")
 
-        form2 = QFormLayout()
-        form2.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
-        form2.setVerticalSpacing(10)
-        form2.addRow("网络类型", self.cb_portal)
-        form2.addRow("模式", self.cb_mode)
-        form2.addRow("检查间隔", self.sp_interval)
-        settings.addLayout(form2)
+        def make_switch_row(label_text: str, checkbox: ToggleSwitch) -> QWidget:
+            row = QWidget()
+            row.setObjectName("ListRow")
+            layout = QHBoxLayout(row)
+            layout.setContentsMargins(16, 11, 12, 11)
+            label = QLabel(label_text)
+            label.setObjectName("MetricValue")
+            layout.addWidget(label)
+            layout.addStretch(1)
+            layout.addWidget(checkbox)
+            return row
 
-        hint = QLabel("建议使用“自动模式”，只有断网时才会触发登录。")
-        hint.setObjectName("Hint")
-        hint.setWordWrap(True)
-        settings.addWidget(hint)
+        auto_rows = QVBoxLayout()
+        auto_rows.setSpacing(8)
+        auto_rows.addWidget(make_switch_row("开机自启", self.chk_autostart))
+        auto_rows.addWidget(make_switch_row("启动软件后自动连接", self.chk_connect_on_launch))
+        auto_rows.addWidget(make_switch_row("自启时最小化到托盘", self.chk_start_min))
 
-        sec3 = QLabel("自启")
-        sec3.setObjectName("SectionTitle")
-        settings.addWidget(sec3)
-        settings.addWidget(self.chk_autostart)
-        settings.addWidget(self.chk_start_min)
+        # Login settings stay collapsed during normal operation.
+        self.login_body = QWidget()
+        self.login_body.setObjectName("LoginBody")
+        login_form = QFormLayout(self.login_body)
+        login_form.setContentsMargins(16, 16, 16, 16)
+        login_form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft)
+        login_form.setVerticalSpacing(11)
+        login_form.addRow("账号", self.ed_user)
+        login_form.addRow("密码", self.ed_pass)
+        login_form.addRow("网络类型", self.cb_portal)
+        login_form.addRow("模式", self.cb_mode)
+        login_form.addRow("检查间隔", self.sp_interval)
+        self._login_expanded = not bool(cfg.user_account and cfg.user_password)
+        self.login_body.setVisible(self._login_expanded)
+        self._update_login_toggle()
 
-        # Advanced fields are removed from the UI for now.
+        latest_card = QWidget()
+        latest_card.setObjectName("Card")
+        latest = QHBoxLayout(latest_card)
+        latest.setContentsMargins(16, 13, 16, 13)
+        latest_icon = QLabel("●")
+        latest_icon.setStyleSheet("color: #22AD68; font-size: 11px;")
+        latest.addWidget(latest_icon, 0, Qt.AlignmentFlag.AlignTop)
+        latest.addWidget(self.lbl_latest_event, 1)
+        latest.addWidget(self.lbl_latest_time, 0, Qt.AlignmentFlag.AlignTop)
 
-        settings.addStretch(1)
+        bottom_actions = QHBoxLayout()
+        bottom_actions.setSpacing(8)
+        bottom_actions.addWidget(self.btn_save)
+        bottom_actions.addWidget(self.btn_toggle, 1)
 
-        row_a = QHBoxLayout()
-        row_a.addWidget(self.btn_toggle, 1)
-        settings.addLayout(row_a)
+        page = QWidget()
+        page.setObjectName("Page")
+        root = QVBoxLayout(page)
+        root.setContentsMargins(18, 18, 18, 20)
+        root.setSpacing(14)
+        root.addLayout(header)
+        root.addWidget(hero_card)
+        root.addLayout(action_row)
+        root.addWidget(auto_title)
+        root.addLayout(auto_rows)
+        root.addWidget(self.btn_login_toggle)
+        root.addWidget(self.login_body)
+        root.addWidget(latest_card)
+        root.addLayout(bottom_actions)
+        root.addStretch(1)
 
-        row_b = QHBoxLayout()
-        row_b.addWidget(self.btn_test, 1)
-        row_b.addWidget(self.btn_probe, 1)
-        settings.addLayout(row_b)
-
-        row_c = QHBoxLayout()
-        row_c.addWidget(self.btn_save, 1)
-        row_c.addWidget(self.btn_open_log, 1)
-        settings.addLayout(row_c)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(page)
+        self.setCentralWidget(scroll)
 
         # Log dialog (hidden by default)
         self.log_dialog = QDialog(self)
-        self.log_dialog.setWindowTitle("日志")
-        self.log_dialog.setMinimumSize(760, 420)
+        self.log_dialog.setWindowTitle("运行日志")
+        self.log_dialog.setMinimumSize(720, 420)
         log_layout = QVBoxLayout(self.log_dialog)
         log_layout.setContentsMargins(16, 16, 16, 16)
         log_layout.setSpacing(12)
-
-        log_title = QLabel("日志")
+        log_title = QLabel("运行日志")
         log_title.setObjectName("SectionTitle")
-
         log_actions = QHBoxLayout()
         log_actions.addWidget(log_title)
         log_actions.addStretch(1)
         log_actions.addWidget(self.btn_copy_log)
         log_actions.addWidget(self.btn_clear_log)
         log_layout.addLayout(log_actions)
-
         log_layout.addWidget(self.log_view, 1)
-
         log_hint = QLabel(f"配置: {self._cfg_path}\n日志: {self._log_path}")
-        log_hint.setObjectName("Hint")
+        log_hint.setObjectName("Muted")
         log_hint.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         log_layout.addWidget(log_hint)
-
-        body = QHBoxLayout()
-        body.setSpacing(16)
-        body.addWidget(settings_card, 1)
-
-        root = QVBoxLayout()
-        root.setContentsMargins(18, 18, 18, 18)
-        root.setSpacing(16)
-        root.addLayout(header)
-        root.addLayout(body, 1)
-
-        w = QWidget()
-        w.setLayout(root)
-        self.setCentralWidget(w)
 
         # Tray
         self.tray = QSystemTrayIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DriveNetIcon))
@@ -468,9 +392,13 @@ class MainWindow(QMainWindow):
         self.btn_toggle.clicked.connect(self.on_toggle)
         self.btn_probe.clicked.connect(self.on_probe)
         self.btn_test.clicked.connect(self.on_test)
+        self.btn_login_toggle.clicked.connect(self.toggle_login_config)
 
         self.cb_portal.currentIndexChanged.connect(self.on_portal_type_changed)
+        self.cb_mode.currentIndexChanged.connect(self._sync_summary)
+        self.sp_interval.valueChanged.connect(self._sync_summary)
         self.chk_autostart.stateChanged.connect(self.on_autostart_changed)
+        self.chk_connect_on_launch.stateChanged.connect(self.on_config_changed)
         self.chk_start_min.stateChanged.connect(self.on_autostart_changed)
 
         self.act_show.triggered.connect(self.show_normal)
@@ -478,29 +406,68 @@ class MainWindow(QMainWindow):
         self.act_open_log.triggered.connect(self.on_open_log)
         self.act_quit.triggered.connect(self.on_quit)
 
-        self.set_status("就绪")
+        self.set_theme(cfg.theme, persist=False)
+        self._sync_summary()
+        self.set_status("待机")
 
         if start_minimized:
             self.hide()
 
+        QTimer.singleShot(0, self._start_if_configured)
+
     def _set_status_kind(self, kind: str) -> None:
-        self.lbl_status.setProperty("status", kind)
-        self.lbl_status.style().unpolish(self.lbl_status)
-        self.lbl_status.style().polish(self.lbl_status)
+        for widget in (self.lbl_status, self.lbl_status_dot):
+            widget.setProperty("status", kind)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
 
     def _update_toggle_button(self) -> None:
         if self._running:
-            self.btn_toggle.setText("停止")
-            self.btn_toggle.setObjectName("Danger")
+            self.btn_toggle.setText("停止服务")
+            self.btn_toggle.setObjectName("StopButton")
             self.btn_toggle.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaStop))
         else:
-            self.btn_toggle.setText("开始")
-            self.btn_toggle.setObjectName("Primary")
+            self.btn_toggle.setText("启动服务")
+            self.btn_toggle.setObjectName("PrimaryButton")
             self.btn_toggle.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
 
         # Refresh style after objectName change
         self.btn_toggle.style().unpolish(self.btn_toggle)
         self.btn_toggle.style().polish(self.btn_toggle)
+
+    def _update_login_toggle(self) -> None:
+        arrow = "⌃" if self._login_expanded else "⌄"
+        self.btn_login_toggle.setText(f"登录配置  {arrow}")
+
+    def toggle_login_config(self) -> None:
+        self._login_expanded = not self._login_expanded
+        self.login_body.setVisible(self._login_expanded)
+        self._update_login_toggle()
+
+    def set_theme(self, mode: str, persist: bool = True) -> None:
+        if mode not in ("system", "light", "dark"):
+            mode = "system"
+        self._theme_mode = mode
+        app = QApplication.instance()
+        effective = apply_theme(app, mode) if app else mode
+        icons = {"system": "◐", "light": "☀", "dark": "☾"}
+        labels = {"system": "跟随系统", "light": "浅色", "dark": "深色"}
+        self.btn_theme.setText(icons[mode])
+        self.btn_theme.setToolTip(f"主题：{labels[mode]}（当前 {effective}）")
+        for switch in (self.chk_autostart, self.chk_connect_on_launch, self.chk_start_min):
+            switch.update()
+        if persist:
+            self._save_current_config()
+
+    def _sync_summary(self, *args) -> None:
+        portal_text = self.cb_portal.currentText().replace("（", " ").replace("）", "")
+        self.lbl_network_value.setText(portal_text)
+        self.lbl_mode_value.setText("自动" if self.cb_mode.currentData() == "detect" else "强制")
+        self.lbl_interval_value.setText(f"{self.sp_interval.value()} 秒")
+
+    def _set_current_ip(self, ip: str) -> None:
+        if ip:
+            self.lbl_ip_value.setText(ip)
 
     def _infer_status_kind(self, s: str) -> str:
         if not s:
@@ -553,6 +520,8 @@ class MainWindow(QMainWindow):
     def append_log(self, msg: str) -> None:
         self._logger.info(msg)
         self.log_view.appendPlainText(msg)
+        self.lbl_latest_event.setText(msg)
+        self.lbl_latest_time.setText(datetime.now().strftime("%H:%M:%S"))
 
     def current_cfg(self) -> Config:
         user_account = self.ed_user.text().strip()
@@ -574,15 +543,29 @@ class MainWindow(QMainWindow):
             portal_extra_params=self.ed_extra.text().strip(),
             portal_referer=self.ed_referer.text().strip(),
             autostart=self.chk_autostart.isChecked(),
+            connect_on_launch=self.chk_connect_on_launch.isChecked(),
+            theme=self._theme_mode,
             start_minimized=self.chk_start_min.isChecked(),
         )
 
     def set_status(self, s: str) -> None:
         self.lbl_status.setText(s)
-        self._set_status_kind(self._infer_status_kind(s))
+        kind = self._infer_status_kind(s)
+        self._set_status_kind(kind)
+        if kind == "online":
+            self.lbl_connection_title.setText("已连接")
+        elif kind == "error":
+            self.lbl_connection_title.setText("连接异常")
+        elif kind == "busy":
+            self.lbl_connection_title.setText("正在处理")
+        elif "停止" in s:
+            self.lbl_connection_title.setText("服务已停止")
+        elif not self._running and s in ("待机", "就绪"):
+            self.lbl_connection_title.setText("等待启动")
 
-    def on_portal_type_changed(self):
+    def on_portal_type_changed(self, *args):
         self._apply_portal_defaults()
+        self._sync_summary()
 
 
     def on_copy_log(self):
@@ -610,10 +593,17 @@ class MainWindow(QMainWindow):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.show_normal()
 
-    def on_save(self):
+    def _save_current_config(self, log: bool = False) -> None:
         self._cfg = self.current_cfg()
         save_ini(self._cfg_path, self._cfg)
-        self.append_log(f"已保存配置: {self._cfg_path}")
+        if log:
+            self.append_log(f"已保存配置: {self._cfg_path}")
+
+    def on_save(self):
+        self._save_current_config(log=True)
+
+    def on_config_changed(self):
+        self._save_current_config()
 
     def on_open_log(self):
         if self.log_dialog.isVisible():
@@ -627,6 +617,7 @@ class MainWindow(QMainWindow):
         start_min = self.chk_start_min.isChecked()
         try:
             set_autostart(enabled, start_minimized=start_min)
+            self._save_current_config()
             self._logger.info("Autostart updated: enabled=%s start_min=%s", enabled, start_min)
         except Exception as e:
             self.append_log(f"更新自启失败: {e!r}")
@@ -635,7 +626,7 @@ class MainWindow(QMainWindow):
         if self._running:
             return
 
-        self._cfg = self.current_cfg()
+        self._save_current_config()
         self.append_log("后台服务启动")
         self.set_status("启动中...")
 
@@ -645,15 +636,27 @@ class MainWindow(QMainWindow):
         self._thread.started.connect(self._worker.run)
         self._worker.log.connect(self.append_log)
         self._worker.status.connect(self.set_status)
+        self._worker.ip_resolved.connect(self._set_current_ip)
         self._worker.running.connect(self._on_running_changed)
         self._worker.finished.connect(self._thread.quit)
         self._worker.finished.connect(self._worker.deleteLater)
         self._thread.finished.connect(self._thread.deleteLater)
         self._thread.start()
 
+    def _start_if_configured(self) -> None:
+        if not self._cfg.connect_on_launch:
+            return
+        if not self._cfg.user_account or not self._cfg.user_password:
+            self.append_log("已启用自动连接，但账号或密码为空")
+            return
+        self.append_log("已加载保存的配置，自动启动后台服务")
+        self.on_start()
+
     def _on_running_changed(self, running: bool):
         self._running = running
         self._update_toggle_button()
+        if not running and self.lbl_status.text() == "停止中...":
+            self.set_status("已停止")
 
     def on_toggle(self):
         if self._running:
@@ -766,6 +769,7 @@ class MainWindow(QMainWindow):
             return {
                 "ok": res.ok,
                 "online": online,
+                "ip": ip,
                 "ret_code": res.ret_code,
                 "msg": res.msg_decoded or res.msg,
                 "raw": res.raw[:300],
@@ -775,6 +779,8 @@ class MainWindow(QMainWindow):
             }
 
         def on_ok(obj):
+            if isinstance(obj, dict) and obj.get("ip"):
+                self._set_current_ip(str(obj["ip"]))
             if isinstance(obj, dict) and not obj.get("ok") and obj.get("error"):
                 self.append_log(f"测试登录：失败 {obj.get('error')}".strip())
                 self.set_status("失败")
@@ -831,6 +837,8 @@ class MainWindow(QMainWindow):
     @Slot(object)
     def _oneshot_done(self, obj):
         try:
+            if self._oneshot_ok_prefix == "探测结果" and obj:
+                self._set_current_ip(str(obj))
             if self._oneshot_on_ok:
                 self._oneshot_on_ok(obj)
             else:
@@ -876,6 +884,7 @@ class MainWindow(QMainWindow):
 
     def on_quit(self):
         try:
+            self._save_current_config()
             if self._worker:
                 self._worker.stop()
         finally:
@@ -897,7 +906,7 @@ def run(argv: list[str]) -> int:
 
     app = QApplication(sys.argv[:1])
     app.setQuitOnLastWindowClosed(False)
-    apply_app_style(app)
+    apply_app_style(app, cfg.theme)
 
     # Log unhandled exceptions to file to avoid silent crashes.
     log_file = log_path()

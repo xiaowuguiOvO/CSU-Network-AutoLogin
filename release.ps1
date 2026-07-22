@@ -42,10 +42,24 @@ if (Test-Path $zipPath) {
   Remove-Item -Force $zipPath
 }
 
-Compress-Archive -Path $distDir -DestinationPath $zipPath
+$userConfig = Join-Path $distDir "config.ini"
+$configBackup = $null
+if (Test-Path -LiteralPath $userConfig) {
+  $configBackup = New-TemporaryFile
+  Copy-Item -LiteralPath $userConfig -Destination $configBackup.FullName -Force
+  Remove-Item -LiteralPath $userConfig -Force
+}
 
-Remove-Item -Force (Join-Path $distDir "config.example.ini")
-Remove-Item -Force (Join-Path $distDir "README.md")
+try {
+  Compress-Archive -Path $distDir -DestinationPath $zipPath
+} finally {
+  Remove-Item -Force (Join-Path $distDir "config.example.ini") -ErrorAction SilentlyContinue
+  Remove-Item -Force (Join-Path $distDir "README.md") -ErrorAction SilentlyContinue
+  if ($configBackup -and (Test-Path -LiteralPath $configBackup.FullName)) {
+    Copy-Item -LiteralPath $configBackup.FullName -Destination $userConfig -Force
+    Remove-Item -LiteralPath $configBackup.FullName -Force
+  }
+}
 
 $hash = (Get-FileHash -Algorithm SHA256 -Path $zipPath).Hash.ToLower()
 $hashPath = Join-Path $releaseDir ($zipName + ".sha256.txt")
